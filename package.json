@@ -1,0 +1,23 @@
+{
+  "name": "mysql-dbo",
+  "description": "Simple MySQL DBO for node",
+  "version": "1.0.0",
+  "main": "./MySQL.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/newtoncodes/mysql-dbo"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/newtoncodes/mysql-dbo"
+  },
+  "author": "Hristiyan Nikolov <hristiyan@newton.codes> (http://github.com/newtoncodes)",
+  "homepage": "https://github.com/newtoncodes/mysql-dbo",
+  "keywords": [
+    "mysql",
+    "dbo"
+  ],
+  "dependencies": {
+    "mysql": "^2.11.1"
+  }
+}
