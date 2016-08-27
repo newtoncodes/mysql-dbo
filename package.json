@@ -1,7 +1,7 @@
 {
   "name": "mysql-dbo",
   "description": "Simple MySQL DBO for node",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "./src/MySQL.js",
   "repository": {
     "type": "git",

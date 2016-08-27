@@ -254,6 +254,15 @@ class MySQL extends EventEmitter {
      * @returns {string}
      */
     escape(value) {
+        if (value instanceof Date) {
+            value = value.getUTCFullYear() + '-' +
+                ('00' + (value.getUTCMonth()+1)).slice(-2) + '-' +
+                ('00' + value.getUTCDate()).slice(-2) + ' ' +
+                ('00' + value.getUTCHours()).slice(-2) + ':' +
+                ('00' + value.getUTCMinutes()).slice(-2) + ':' +
+                ('00' + value.getUTCSeconds()).slice(-2);
+        }
+
         return this._connection.escape(value + '');
     }
 
