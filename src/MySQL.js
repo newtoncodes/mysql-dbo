@@ -34,94 +34,76 @@ class MySQL extends EventEmitter {
     }
 
     /**
-     * @param {function} [callback]
-     * @return {MySQL}
+     * @return {Promise.<void>}
      */
-    connect(callback) {
-        if (!this._connected) this._connection.connect(error => {
-            if (error) return callback && callback(error);
-            if (!this._database) return callback && callback(null);
-
-            this.query('USE ' + this._database, callback);
+    async connect() {
+        if (this._connected) return;
+        
+        await new Promise((resolve, reject) => {
+            this._connection.connect((error) => {
+                if (error) return reject(error);
+                resolve();
+            });
         });
-
-        return this;
+    
+        if (!this._database) return;
+        
+        await this.query('USE ' + this._database);
     }
 
     /**
-     * @return {MySQL}
+     * @return {void}
      */
     close() {
         if (this._connection.hasOwnProperty('close')) this._connection.close();
         this._connection = null;
-
-        return this;
     }
-
+    
     /**
      * @param {string} query
-     * @param {function} [callback]
-     * @return {MySQL}
+     * @returns {Promise.<void>}
      */
-    query(query, callback) {
-        if (!this._connection) return callback && callback(new Error('Not connected to db'));
-        this._connection.query(query, callback || (() => {}));
-
-        return this;
+    async query(query) {
+        if (!this._connection) throw new Error('Not connected to db');
+        
+        await new Promise((resolve, reject) => {
+            this._connection.query(query, (error) => {
+                if (error) return reject(error);
+                resolve();
+            });
+        });
     }
-
+    
     /**
+     *
      * @param {string} query
      * @param {string} [key]
      * @param {boolean} [first]
-     * @param {function} [callback]
-     * @return {MySQL}
+     * @returns {Promise.<*>}
      */
-    select(query, key, first, callback) {
-        if (arguments.length === 3) {
-            if (typeof arguments[2] === 'function') {
-                callback = arguments[2];
-
-                if (typeof arguments[1] === 'string') {
-                    key = arguments[1];
-                    first = false;
-                } else {
-                    key = '';
-                    first = arguments[1];
-                }
-            }
-        } else if (arguments.length === 2) {
-            if (typeof arguments[1] === 'function') {
-                callback = arguments[1];
-                key = '';
-                first = false;
-            } else if (typeof arguments[1] === 'string') {
-                callback = null;
+    async select(query, key, first) {
+        if (arguments.length === 2) {
+            if (typeof arguments[1] === 'string') {
                 key = arguments[1];
                 first = false;
             } else {
-                callback = null;
                 key = '';
                 first = arguments[1];
             }
         }
-
-        if (!key || first) return this.query(query, (error, result) => {
-            if (error) return callback && callback(error);
-            callback && callback(null, (first ? result[0] : result) || null);
-        });
-
-        this.query(query, (error, result) => {
-            if (error) return callback && callback(error);
-            if (!result || !result.length) return callback && callback(null, []);
-
-            let mapped = {};
-            result.forEach(row => row && row.hasOwnProperty(key) && (mapped[row[key]] = row));
-
-            callback && callback(null, mapped);
-        });
-
-        return this;
+        
+        if (!key || first) {
+            let result = await this.query(query);
+            return (first ? result[0] : result) || null;
+        }
+        
+        let result = await this.query(query);
+        if (!result || !result.length) return [];
+        
+        let mapped = {};
+        result.forEach(row => row && row.hasOwnProperty(key) && (mapped[row[key]] = row));
+        
+        return mapped;
     }
 
     /**
@@ -129,31 +111,14 @@ class MySQL extends EventEmitter {
      * @param {Object|Array.<Object>} data
      * @param {Array.<string>} [columns]
      * @param {boolean} [ignore]
-     * @param {function} [callback]
-     * @return {MySQL}
+     * @return {Promise.<number>}
      */
-    insert(table, data, columns, ignore, callback) {
-        if (arguments.length === 4) {
-            if (typeof arguments[3] === 'function') {
-                callback = arguments[3];
-                ignore = false;
-
-                if (typeof arguments[2] !== 'object') {
-                    ignore = arguments[2];
-                    columns = null;
-                }
-            }
-        } else if (arguments.length === 3) {
-            if (typeof arguments[2] === 'function') {
-                callback = arguments[2];
-                ignore = false;
-                columns = null;
-            } else if (typeof arguments[2] === 'object') {
-                callback = null;
+    async insert(table, data, columns, ignore) {
+        if (arguments.length === 3) {
+            if (typeof arguments[2] === 'object') {
                 ignore = false;
                 columns = arguments[2];
             } else {
-                callback = null;
                 ignore = arguments[2];
                 columns = null;
             }
@@ -168,12 +133,9 @@ class MySQL extends EventEmitter {
         query += '(' + columns.map(key => '`' + key + '`').join(', ') + ') VALUES ';
         query += data.map(row => '(' + columns.map(key => row[key] === null ? 'NULL' : this.escape(row[key])).join(', ') + ')').join(', ');
 
-        this.query(query, (error, result) => {
-            if (error) return callback && callback(error);
-            callback && callback(null, this.getInsertId(result));
-        });
-
-        return this;
+        let result = await this.query(query);
+        
+        return this.getInsertId(result);
     }
 
     /**
@@ -181,17 +143,11 @@ class MySQL extends EventEmitter {
      * @param {Object} data
      * @param {Array.<string>} [columns]
      * @param {string|Object} where
-     * @param {function} [callback]
-     * @return {MySQL}
+     * @return {Promise.<number>}
      */
-    update(table, data, columns, where, callback) {
-        if (arguments.length === 4 && typeof arguments[3] === 'function') {
-            callback = arguments[3];
+    async update(table, data, columns, where) {
+        if (arguments.length === 3) {
             where = arguments[2];
-            columns = null;
-        } else if (arguments.length === 3) {
-            where = arguments[2];
-            callback = null;
             columns = null;
         }
 
@@ -199,54 +155,47 @@ class MySQL extends EventEmitter {
             where = Object.keys(where).map(key => '`' + key + '` = ' + this.escape(where[key]) + '').join(' AND ');
         }
 
-        if (!where) return callback && callback(new Error('Cannot update without a where clause.'));
+        if (!where) throw new Error('Cannot update without a where clause.');
 
         columns = columns || Object.keys(data || {});
 
         let query = 'UPDATE `' + table + '` SET ';
         query += columns.map(key => (data[key] === null) ? '`' + key + '` = NULL' : '`' + key + '` = ' + this.escape(data[key])).join(', ');
         query += ' WHERE ' + where;
+    
+        let result = await this.query(query);
 
-        this.query(query, (error, result) => {
-            if (error) return callback && callback(error);
-            callback && callback(null, this.getAffectedRows(result));
-        });
-
-        return this;
+        return this.getAffectedRows(result);
     }
 
     //noinspection ReservedWordAsName
     /**
      * @param {string} table
      * @param {string|Object} where
-     * @param {function} callback
-     * @return {MySQL}
+     * @return {Promise.<number>}
      */
-    delete(table, where, callback) {
+    async delete(table, where) {
         if (typeof where === 'object') {
             where = Object.keys(where).map(key => '`' + key + '` = ' + this.escape(where[key]) + '').join(' AND ');
         }
 
-        if (!where) return callback && callback(new Error('Cannot delete without a where clause.'));
+        if (!where) throw new Error('Cannot delete without a where clause.');
 
-        this.query('DELETE FROM `' + table + '` WHERE ' + where, (error, result) => {
-            if (error) return callback && callback(error);
-            callback && callback(null, this.getAffectedRows(result));
-        });
+        let result = await this.query('DELETE FROM `' + table + '` WHERE ' + where);
 
-        return this;
+        return this.getAffectedRows(result);
     }
-
+    
     /**
      * @param {string} table
      * @param {number} id
-     * @param {function} callback
+     * @returns {Promise.<Object|null>}
      */
-    getById(table, id, callback) {
+    async getById(table, id) {
         id = parseInt(id);
-        if (isNaN(id)) return callback && callback(null, null);
+        if (isNaN(id)) return null;
 
-        return this.selectRow('SELECT * FROM ' + table + ' WHERE id = ' + id + ' LIMIT 1', callback);
+        return await this.select('SELECT * FROM ' + table + ' WHERE id = ' + id + ' LIMIT 1', true);
     }
 
     /**
@@ -278,7 +227,7 @@ class MySQL extends EventEmitter {
      * @param {Object} result
      */
     getAffectedRows(result) {
-        if (result && result.hasOwnProperty('affectedRows') && result.affectedRows) return result.affectedRows;
+        if (result && result.hasOwnProperty('affectedRows') && result['affectedRows']) return result['affectedRows'];
         else return false;
     }
 }
