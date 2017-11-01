@@ -66,10 +66,10 @@ class MySQL extends EventEmitter {
     async query(query) {
         if (!this._connection) throw new Error('Not connected to db');
         
-        await new Promise((resolve, reject) => {
-            this._connection.query(query, (error) => {
+        return await new Promise((resolve, reject) => {
+            this._connection.query(query, (error, result) => {
                 if (error) return reject(error);
-                resolve();
+                resolve(result);
             });
         });
     }
