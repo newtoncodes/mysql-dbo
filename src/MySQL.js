@@ -19,12 +19,12 @@ class MySQL extends EventEmitter {
 
         this._connected = false;
 
-        this._connection = Driver.createConnection({
+        this._connection = Driver.createConnection(Object.assign(options || {}, {
             host: this._host,
             port: this._port,
             user: this._user,
             password: this._password
-        });
+        }));
 
         this._connection.on('error', (error) => this.emit('error', error));
         this._connection.on('close', () => {
