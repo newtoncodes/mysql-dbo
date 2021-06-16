@@ -1,7 +1,7 @@
 'use strict';
 
-const Driver = require('mysql');
 const EventEmitter = require('events').EventEmitter;
+const mysql = require('mysql2');
 
 
 class MySQL extends EventEmitter {
@@ -17,46 +17,80 @@ class MySQL extends EventEmitter {
         this._password = options['password'] || '';
         this._database = options['database'] || null;
 
-        this._connected = false;
+        if (options['pool']) {
+            this._pool = mysql.createPool({
+                host: this._host,
+                port: this._port,
+                user: this._user,
+                password: this._password,
+                database: this._database,
 
-        this._connection = Driver.createConnection(Object.assign(options || {}, {
+                waitForConnections: options['pool'].hasOwnProperty('waitForConnections') ? options['pool']['waitForConnections'] : true,
+                connectionLimit: options['pool'].hasOwnProperty('connectionLimit') ? options['pool']['connectionLimit'] : 10,
+                queueLimit: options['pool'].hasOwnProperty('queueLimit') ? options['pool']['queueLimit'] : 0,
+            });
+
+            this._pool = this._pool.promise();
+        } else if (options['connection']) {
+            this._connection = options['connection'];
+            if (this._connection.promise) this._connection = this._connection.promise();
+            this._connection.on('error', (error) => this.emit('error', error));
+        } else {
+            this._connection = mysql.createConnection(Object.assign(options || {}, {
+                host: this._host,
+                port: this._port,
+                user: this._user,
+                password: this._password,
+                database: this._database,
+            }));
+            this._connection = this._connection.promise();
+            this._connection.on('error', (error) => this.emit('error', error));
+
+            this._connection.on('close', () => {
+                console.log('CONNECTION CLOSED');
+                // TODO: this?
+                this.emit('close');
+            });
+        }
+    }
+
+    async end() {
+        if (this._pool) {
+            await this._pool.end();
+        } else {
+            await this._connection.end();
+        }
+    }
+
+    async close() {
+        return this.end();
+    }
+
+    destroy() {
+        if (this._pool) {
+            throw new Error('Pools cannot be destroyed. Use end.');
+        } else {
+            this._connection.destroy();
+        }
+    }
+
+    /**
+     * @returns {Promise<MySQL>}
+     */
+    async allocateDb() {
+        return new MySQL({
             host: this._host,
             port: this._port,
             user: this._user,
-            password: this._password
-        }));
+            password: this._password,
+            database: this._database,
 
-        this._connection.on('error', (error) => this.emit('error', error));
-        this._connection.on('close', () => {
-            this.emit('close');
-            this._connected = false;
+            connection: await this._pool.getConnection(),
         });
     }
 
-    /**
-     * @return {Promise.<void>}
-     */
-    async connect() {
-        if (this._connected) return;
-        
-        await new Promise((resolve, reject) => {
-            this._connection.connect((error) => {
-                if (error) return reject(error);
-                resolve();
-            });
-        });
-    
-        if (!this._database) return;
-        
-        await this.query('USE ' + this._database);
-    }
-
-    /**
-     * @return {void}
-     */
-    close() {
-        if (this._connection.hasOwnProperty('close')) this._connection.close();
-        this._connection = null;
+    async release() {
+        this._connection.release && this._connection.release();
     }
     
     /**
@@ -64,14 +98,14 @@ class MySQL extends EventEmitter {
      * @returns {Promise.<void>}
      */
     async query(query) {
-        if (!this._connection) throw new Error('Not connected to db');
-        
-        return await new Promise((resolve, reject) => {
-            this._connection.query(query, (error, result) => {
-                if (error) return reject(error);
-                resolve(result);
-            });
-        });
+        if (!this._pool && !this._connection) throw new Error('Not connected to db');
+
+        let result = null;
+
+        if (this._pool) result = await this._pool.query(query);
+        else result = await this._connection.query(query);
+
+        return result[0];
     }
     
     /**
@@ -212,6 +246,7 @@ class MySQL extends EventEmitter {
                 ('00' + value.getUTCSeconds()).slice(-2);
         }
 
+        if (this._pool) return this._pool.escape(value + '');
         return this._connection.escape(value + '');
     }
 
@@ -220,7 +255,7 @@ class MySQL extends EventEmitter {
      */
     getInsertId(result) {
         if (result && result.hasOwnProperty('insertId') && result.insertId) return result.insertId;
-        else return false;
+        else return 0;
     }
 
     /**
@@ -228,7 +263,7 @@ class MySQL extends EventEmitter {
      */
     getAffectedRows(result) {
         if (result && result.hasOwnProperty('affectedRows') && result['affectedRows']) return result['affectedRows'];
-        else return false;
+        else return 0;
     }
 }
 

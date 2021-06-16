@@ -7,11 +7,15 @@ let dbo = new MySQL({
     port: 3306,
     database: 'test',
     user: 'root',
-    password: ''
+    password: '',
+
+    pool: true,
 });
 
 
 const main = async () => {
+    // dbo = await dbo.allocateDb();
+
     // Misc query
     let result = await dbo.query('SHOW CREATE TABLE users');
     console.log('Test 1:', result);
@@ -110,7 +114,7 @@ const main = async () => {
     deletedRows = await dbo.delete('users', {id: 9});
     console.log('Test 18:', deletedRows);
 
-    dbo.destroy();
+    await dbo.end();
 };
 
 main().then(() => {
